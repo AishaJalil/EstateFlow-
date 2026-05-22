@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { NavLink, useNavigate, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Plus, CheckSquare, Building2, Users2,
-  ClipboardList, LogOut, Menu, X, ChevronDown, Building
+  ClipboardList, LogOut, Menu, X, ChevronDown, Building, User
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchPendingApprovals } from '../services/estateflow';
+import { NotificationBell } from './NotificationPanel';
 import { UserRole } from '../types';
 
 interface NavItem {
@@ -22,6 +23,7 @@ const navItems: NavItem[] = [
   { label: 'Inspections', to: '/inspect', icon: <ClipboardList size={18} />, roles: ['manager', 'inspector', 'admin'] },
   { label: 'Properties', to: '/properties', icon: <Building2 size={18} />, roles: ['tenant', 'manager', 'inspector', 'admin'] },
   { label: 'Vendors', to: '/vendors', icon: <Users2 size={18} />, roles: ['manager', 'inspector', 'admin'] },
+  { label: 'Profile', to: '/profile', icon: <User size={18} />, roles: ['tenant', 'manager', 'inspector', 'admin'] },
 ];
 
 export function Layout() {
@@ -82,10 +84,11 @@ export function Layout() {
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
               <Building size={18} className="text-white" />
             </div>
-            <div>
+            <div className="flex-1">
               <p className="text-white font-bold text-sm leading-tight">EstateFlow</p>
               <p className="text-teal-200 text-xs capitalize">{role}</p>
             </div>
+            <NotificationBell />
           </div>
         </div>
 
@@ -128,13 +131,16 @@ export function Layout() {
           <Building size={18} className="text-white" />
           <span className="text-white font-bold text-sm">EstateFlow</span>
         </div>
-        <button
-          onClick={() => setMobileOpen(v => !v)}
-          className="text-white p-1"
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button
+            onClick={() => setMobileOpen((v) => !v)}
+            className="text-white p-1"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile drawer */}

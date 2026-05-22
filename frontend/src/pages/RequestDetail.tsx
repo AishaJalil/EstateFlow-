@@ -1,32 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Building2, Home, Calendar, FileText,
-  PenSquare, CheckCircle2, Clock, AlertCircle
+  PenSquare, CheckCircle2, Clock, AlertCircle, Star,
+  ThumbsUp, ThumbsDown, MessageSquare, RefreshCw
 } from 'lucide-react';
-import { fetchMaintenanceRequest } from '../services/estateflow';
+import {
+  fetchMaintenanceRequest,
+  resolveMaintenanceRequest,
+  submitFeedback,
+  rateVendor,
+} from '../services/estateflow';
 import { MaintenanceRequest } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { UrgencyBadge } from '../components/UrgencyBadge';
 import { AgentPipelineLive } from '../components/AgentPipelineLive';
 import { Skeleton } from '../components/LoadingSkeleton';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const live = searchParams.get('live') === '1';
+  const { role } = useAuth();
 
   const [request, setRequest] = useState<MaintenanceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  async function reload() {
     if (!id) return;
-    fetchMaintenanceRequest(id)
-      .then(setRequest)
-      .catch(() => setError('Could not load request.'))
-      .finally(() => setLoading(false));
-  }, [id]);
+    try {
+      setRequest(await fetchMaintenanceRequest(id));
+    } catch {
+      setError('Could not load request.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { reload(); }, [id]);
 
   if (loading) {
     return (
@@ -53,6 +66,11 @@ export default function RequestDetail() {
   }
 
   const pipeline = request.maintenance_pipeline_results;
+  const isTenant = role === 'tenant';
+  const isResolvable = isTenant && ['In Progress', 'Scheduled'].includes(request.status);
+  const isResolved = request.status === 'Resolved';
+  const hasVendor = !!pipeline?.assigned_vendor;
+  const hasRated = false; // optimistically managed below
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
@@ -97,6 +115,43 @@ export default function RequestDetail() {
 
       {/* Live pipeline */}
       {id && <AgentPipelineLive requestId={id} live={live} />}
+
+      {/* ── Tenant Actions ─────────────────────────────────────────── */}
+      {isTenant && (
+        <div className="space-y-4">
+          {/* Mark as resolved */}
+          {isResolvable && (
+            <TenantResolveCard requestId={request.id} onResolved={reload} />
+          )}
+
+          {/* Follow-up feedback (only if Resolved and not yet confirmed) */}
+          {isResolved && !request.tenant_confirmed_resolved && (
+            <TenantFeedbackCard requestId={request.id} onSubmitted={reload} />
+          )}
+
+          {/* Confirmed resolved */}
+          {isResolved && request.tenant_confirmed_resolved && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
+              <CheckCircle2 size={18} className="text-green-600" />
+              <p className="text-sm font-medium text-green-800">
+                You confirmed this issue was resolved.{' '}
+                {request.tenant_feedback && (
+                  <span className="font-normal text-green-700">"{request.tenant_feedback}"</span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Vendor rating — show if resolved and vendor was assigned */}
+          {isResolved && hasVendor && pipeline?.assigned_vendor_id && (
+            <VendorRatingCard
+              vendorName={pipeline.assigned_vendor!}
+              vendorId={pipeline.assigned_vendor_id}
+            />
+          )}
+
+        </div>
+      )}
 
       {/* Report section */}
       {pipeline && (
@@ -147,6 +202,8 @@ export default function RequestDetail() {
   );
 }
 
+// ─── Subcomponents ────────────────────────────────────────────────────────────
+
 function InfoItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
@@ -155,6 +212,220 @@ function InfoItem({ icon, label, value }: { icon: React.ReactNode; label: string
         <p className="text-xs text-gray-400">{label}</p>
         <p className="text-sm font-medium text-gray-900">{value}</p>
       </div>
+    </div>
+  );
+}
+
+function TenantResolveCard({ requestId, onResolved }: { requestId: string; onResolved: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handle() {
+    setLoading(true);
+    try {
+      await resolveMaintenanceRequest(requestId);
+      setDone(true);
+      setTimeout(onResolved, 800);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
+        <CheckCircle2 size={18} className="text-green-600" />
+        <p className="text-sm font-medium text-green-800">Marked as resolved!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-card border border-gray-100 p-5">
+      <h2 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+        <CheckCircle2 size={15} className="text-teal-700" />
+        Issue Fixed?
+      </h2>
+      <p className="text-xs text-gray-500 mb-4">
+        If the vendor has already resolved your issue, you can mark this request as resolved.
+      </p>
+      <button
+        id="resolve-request-btn"
+        onClick={handle}
+        disabled={loading}
+        className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+      >
+        {loading ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <CheckCircle2 size={15} />}
+        {loading ? 'Marking…' : 'Mark as Resolved'}
+      </button>
+    </div>
+  );
+}
+
+function TenantFeedbackCard({ requestId, onSubmitted }: { requestId: string; onSubmitted: () => void }) {
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  async function handle(resolved: boolean) {
+    setSubmitting(true);
+    try {
+      await submitFeedback(requestId, { confirmed_resolved: resolved, comment: comment || undefined });
+      setSubmitted(true);
+      setTimeout(onSubmitted, 800);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
+        <CheckCircle2 size={18} className="text-green-600" />
+        <p className="text-sm font-medium text-green-800">Thanks for your feedback!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-card border border-gray-100 p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+        <MessageSquare size={15} className="text-teal-700" />
+        Did this resolve your issue?
+      </h2>
+      <p className="text-xs text-gray-500">
+        Your vendor was marked as having visited. Was your issue resolved?
+      </p>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+        placeholder="Optional: add any comments…"
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all resize-none"
+      />
+      <div className="flex gap-3">
+        <button
+          id="feedback-yes-btn"
+          onClick={() => handle(true)}
+          disabled={submitting}
+          className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <ThumbsUp size={14} />
+          Yes, resolved
+        </button>
+        <button
+          id="feedback-no-btn"
+          onClick={() => handle(false)}
+          disabled={submitting}
+          className="flex items-center gap-2 bg-red-100 hover:bg-red-200 disabled:opacity-60 text-red-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <ThumbsDown size={14} />
+          No, still open
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VendorRatingCard({
+  vendorName,
+  vendorId,
+}: {
+  vendorName: string;
+  vendorId: string;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!rating) { setError('Please select a star rating.'); return; }
+    setError('');
+    setSubmitting(true);
+    try {
+      await rateVendor(vendorId, { rating, comment: comment || undefined });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Rating failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+
+  if (submitted) {
+    return (
+      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+        <Star size={18} className="text-amber-500 fill-amber-500" />
+        <p className="text-sm font-medium text-amber-800">
+          Thanks for rating {vendorName}!
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-card border border-gray-100 p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+        <Star size={15} className="text-amber-500" />
+        Rate your vendor
+      </h2>
+      <p className="text-xs text-gray-500">How was your experience with <strong>{vendorName}</strong>?</p>
+
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Star picker */}
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5].map((s) => (
+            <button
+              key={s}
+              type="button"
+              id={`star-${s}`}
+              onMouseEnter={() => setHover(s)}
+              onMouseLeave={() => setHover(0)}
+              onClick={() => setRating(s)}
+              className="transition-transform hover:scale-110"
+            >
+              <Star
+                size={28}
+                className={
+                  s <= (hover || rating)
+                    ? 'text-amber-400 fill-amber-400'
+                    : 'text-gray-200 fill-gray-200'
+                }
+              />
+            </button>
+          ))}
+          {rating > 0 && (
+            <span className="ml-2 self-center text-sm font-medium text-gray-600">
+              {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
+            </span>
+          )}
+        </div>
+
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          rows={2}
+          placeholder="Optional: tell us more…"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 resize-none transition-all"
+        />
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <button
+          type="submit"
+          id="submit-rating-btn"
+          disabled={submitting || !rating}
+          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          {submitting ? <RefreshCw size={14} className="animate-spin" /> : <Star size={14} />}
+          {submitting ? 'Submitting…' : 'Submit Rating'}
+        </button>
+      </form>
     </div>
   );
 }

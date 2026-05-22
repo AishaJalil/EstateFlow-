@@ -9,6 +9,7 @@ from app.api.routes import (
     health,
     inspections,
     maintenance,
+    notifications,
     predictive,
     profile,
     properties,
@@ -42,6 +43,7 @@ app.include_router(vendors.router, prefix="/api")
 app.include_router(maintenance.router, prefix="/api")
 app.include_router(inspections.router, prefix="/api")
 app.include_router(predictive.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 
 async def _predictive_weekly_loop() -> None:

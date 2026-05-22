@@ -5,6 +5,19 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   full_name?: string;
+  whatsapp_phone?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'in_app' | 'sms' | 'email' | 'whatsapp';
+  subject?: string;
+  message: string;
+  reference_type?: string;
+  reference_id?: string;
+  status: string;
+  read_at?: string;
+  created_at: string;
 }
 
 export type RequestStatus =
@@ -34,6 +47,7 @@ export interface PipelineResult {
   category?: string;
   summary?: string;
   assigned_vendor?: string;
+  assigned_vendor_id?: string;
   scheduled_time?: string;
   sla_target_hours?: number;
   agents_run?: AgentLog[];
@@ -46,6 +60,7 @@ export interface PipelineResult {
   recommended_model?: string;
 }
 
+
 export interface MaintenanceRequest {
   id: string;
   ticket_id: string;
@@ -56,6 +71,8 @@ export interface MaintenanceRequest {
   status: RequestStatus;
   created_at: string;
   maintenance_pipeline_results?: PipelineResult;
+  tenant_confirmed_resolved?: boolean;
+  tenant_feedback?: string;
 }
 
 export interface Property {
@@ -79,6 +96,7 @@ export interface Vendor {
   distance_km?: number;
   phone?: string;
   email?: string;
+  whatsapp_phone?: string;
 }
 
 export interface Inspection {

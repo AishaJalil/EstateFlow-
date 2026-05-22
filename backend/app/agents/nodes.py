@@ -23,6 +23,7 @@ from app.services.report_generator import (
 )
 from app.services.risk_matrix import SLA_BY_URGENCY, lookup_risk_hits
 from app.services.vendor_matching import rank_vendors
+from app.services.whatsapp import send_whatsapp, send_whatsapp_to_managers
 
 PII_PATTERNS = [
     (r"\b\d{5}-\d{7}-\d\b", "cnic"),
@@ -272,6 +273,12 @@ priority_reason (short English)."""
             state.get("summary", issue[:120]),
         )
         manager_notified = count > 0
+        # Also WhatsApp all managers
+        try:
+            wa_msg = f"URGENT [{f'TKT-{ticket}'}]: {state.get('summary', issue[:120])}. Open EstateFlow to approve."
+            await send_whatsapp_to_managers(wa_msg)
+        except Exception:
+            pass
 
     ms = int((time.perf_counter() - start) * 1000)
     output = {
@@ -542,6 +549,36 @@ async def communications_agent(state: MaintenanceGraphState) -> MaintenanceGraph
             reference_id=state["request_id"],
         )
         sent = True
+
+        # WhatsApp to tenant if they have a number stored
+        try:
+            admin = get_supabase_admin()
+            profile = (
+                admin.table("profiles")
+                .select("whatsapp_phone")
+                .eq("id", tenant_id)
+                .limit(1)
+                .execute()
+            )
+            tenant_wa = (profile.data or [{}])[0].get("whatsapp_phone") or ""
+            if tenant_wa:
+                await send_whatsapp(tenant_wa, msg)
+        except Exception:
+            pass  # WhatsApp failure must never block the pipeline
+
+    # WhatsApp to vendor when job is confirmed
+    vendor_phone = state.get("vendor_phone") or ""
+    if vendor_phone and state.get("scheduling_status") == "Confirmed":
+        vendor_msg = (
+            f"New EstateFlow job assigned.\n"
+            f"Issue: {summary}\n"
+            f"Scheduled: {scheduled}\n"
+            f"Ticket: {state.get('request_id', '')[:8].upper()}"
+        )
+        try:
+            await send_whatsapp(vendor_phone, vendor_msg)
+        except Exception:
+            pass
 
     follow_up = schedule_follow_up_iso(24)
     ms = int((time.perf_counter() - start) * 1000)

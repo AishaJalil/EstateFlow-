@@ -17,8 +17,20 @@ class MaintenanceApprove(BaseModel):
 class ProfileUpdate(BaseModel):
     full_name: str | None = None
     phone: str | None = None
+    whatsapp_phone: str | None = None
     property_id: str | None = None
     unit_id: str | None = None
+
+
+class VendorRateBody(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: str | None = None
+
+
+class MaintenanceFeedback(BaseModel):
+    confirmed_resolved: bool
+    comment: str | None = None
+
 
 
 class InspectionCreate(BaseModel):

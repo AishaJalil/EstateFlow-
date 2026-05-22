@@ -45,6 +45,7 @@ export function normalizePipeline(
     category: raw?.category as string | undefined,
     summary: raw?.summary as string | undefined,
     assigned_vendor: raw?.assigned_vendor as string | undefined,
+    assigned_vendor_id: raw?.assigned_vendor_id as string | undefined,
     scheduled_time: raw?.scheduled_time as string | undefined,
     sla_target_hours: raw?.sla_target_hours as number | undefined,
     agents_run: agentLogs,
@@ -56,6 +57,7 @@ export function normalizePipeline(
     recommended_model: raw?.recommended_model as string | undefined,
     human_approved: Boolean(raw?.human_approved),
   };
+
 }
 
 export function mapMaintenanceRequest(row: Record<string, unknown>): MaintenanceRequest {
@@ -69,8 +71,11 @@ export function mapMaintenanceRequest(row: Record<string, unknown>): Maintenance
     status: row.status as MaintenanceRequest['status'],
     created_at: String(row.created_at ?? ''),
     maintenance_pipeline_results: getPipelineFromRow(row),
+    tenant_confirmed_resolved: row.tenant_confirmed_resolved as boolean | undefined,
+    tenant_feedback: row.tenant_feedback as string | undefined,
   };
 }
+
 
 export function mapProperty(row: Record<string, unknown>): Property {
   const unitsRaw = row.units as { unit_number?: string }[] | undefined;

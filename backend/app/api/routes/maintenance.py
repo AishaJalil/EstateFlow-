@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from app.agents.maintenance_graph import run_maintenance_pipeline
 from app.auth import get_current_user, require_roles
 from app.db import get_supabase_admin
-from app.schemas import MaintenanceApprove, MaintenanceCreate
+from app.schemas import MaintenanceApprove, MaintenanceCreate, MaintenanceFeedback
 from app.services.llm import structured_completion
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -344,3 +344,64 @@ async def get_report_meta(request_id: str, user: dict = Depends(get_current_user
     if not row:
         raise HTTPException(status_code=404, detail="Pipeline not found")
     return {"data": row}
+
+
+@router.post("/{request_id}/resolve")
+async def resolve_request(
+    request_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Tenant (or manager/admin) marks a request as Resolved."""
+    admin = get_supabase_admin()
+    req = (
+        admin.table("maintenance_requests")
+        .select("tenant_id, status")
+        .eq("id", request_id)
+        .single()
+        .execute()
+    )
+    if not req.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if user["role"] == "tenant" and req.data.get("tenant_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    admin.table("maintenance_requests").update({"status": "Resolved"}).eq(
+        "id", request_id
+    ).execute()
+    return {"message": "Request marked as Resolved."}
+
+
+@router.post("/{request_id}/feedback")
+async def submit_feedback(
+    request_id: str,
+    body: MaintenanceFeedback,
+    user: dict = Depends(get_current_user),
+):
+    """Tenant confirms whether the repair resolved their issue (follow-up response)."""
+
+
+    admin = get_supabase_admin()
+    req = (
+        admin.table("maintenance_requests")
+        .select("tenant_id, status")
+        .eq("id", request_id)
+        .single()
+        .execute()
+    )
+    if not req.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if user["role"] == "tenant" and req.data.get("tenant_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    update: dict = {"tenant_feedback": body.comment}
+    if body.confirmed_resolved:
+        update["tenant_confirmed_resolved"] = True
+        update["status"] = "Resolved"
+    else:
+        # Not resolved — reopen
+        update["tenant_confirmed_resolved"] = False
+        update["status"] = "Open"
+
+    admin.table("maintenance_requests").update(update).eq("id", request_id).execute()
+    return {"message": "Feedback recorded. Thank you!"}
+

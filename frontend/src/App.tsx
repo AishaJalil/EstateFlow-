@@ -12,6 +12,8 @@ import Approvals from './pages/Approvals';
 import Properties from './pages/Properties';
 import Vendors from './pages/Vendors';
 import Inspections from './pages/Inspections';
+import Profile from './pages/Profile';
+
 
 export default function App() {
   if (!isConfigured) return <ConfigError />;
@@ -48,6 +50,7 @@ export default function App() {
                   <Vendors />
                 </ProtectedRoute>
               } />
+              <Route path="profile" element={<Profile />} />
             </Route>
           </Route>
 

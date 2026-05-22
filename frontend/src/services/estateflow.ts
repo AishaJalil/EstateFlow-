@@ -11,6 +11,7 @@ import {
 } from '../lib/mappers';
 import {
   AgentLog,
+  AppNotification,
   Inspection,
   MaintenanceRequest,
   PipelineResult,
@@ -27,6 +28,22 @@ export async function fetchProfile(): Promise<UserProfile> {
     email: String(row.email ?? ''),
     role: row.role as UserProfile['role'],
     full_name: row.full_name as string | undefined,
+    whatsapp_phone: row.whatsapp_phone as string | undefined,
+  };
+}
+
+export async function updateProfile(body: {
+  full_name?: string;
+  phone?: string;
+  whatsapp_phone?: string;
+}): Promise<UserProfile> {
+  const row = unwrapData<Record<string, unknown>>(await api.put('/api/profile/me', body));
+  return {
+    id: String(row.id),
+    email: String(row.email ?? ''),
+    role: row.role as UserProfile['role'],
+    full_name: row.full_name as string | undefined,
+    whatsapp_phone: row.whatsapp_phone as string | undefined,
   };
 }
 
@@ -49,6 +66,17 @@ export async function fetchPendingApprovals(): Promise<MaintenanceRequest[]> {
 
 export async function approveMaintenanceRequest(id: string): Promise<void> {
   await api.post(`/api/maintenance/${id}/approve`, { approved: true });
+}
+
+export async function resolveMaintenanceRequest(id: string): Promise<void> {
+  await api.post(`/api/maintenance/${id}/resolve`);
+}
+
+export async function submitFeedback(
+  id: string,
+  body: { confirmed_resolved: boolean; comment?: string }
+): Promise<void> {
+  await api.post(`/api/maintenance/${id}/feedback`, body);
 }
 
 export async function fetchPipelineLive(id: string): Promise<{
@@ -117,6 +145,13 @@ export async function fetchVendors(): Promise<Vendor[]> {
   return (rows ?? []).map(mapVendor);
 }
 
+export async function rateVendor(
+  vendorId: string,
+  body: { rating: number; comment?: string }
+): Promise<void> {
+  await api.post(`/api/vendors/${vendorId}/rate`, body);
+}
+
 export async function fetchInspections(): Promise<Inspection[]> {
   const rows = unwrapData<Record<string, unknown>[]>(await api.get('/api/inspections'));
   return (rows ?? []).map(mapInspection);
@@ -142,3 +177,25 @@ export async function fetchPredictiveMaintenance(): Promise<PredictiveMaintenanc
 export async function runPredictiveMaintenance(): Promise<void> {
   await api.post('/api/predictive-maintenance/run');
 }
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export async function fetchNotifications(): Promise<{
+  notifications: AppNotification[];
+  unread_count: number;
+}> {
+  const res = await api.get<{ data: AppNotification[]; unread_count: number }>(
+    '/api/notifications'
+  );
+  return { notifications: res.data ?? [], unread_count: res.unread_count ?? 0 };
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await api.patch(`/api/notifications/${id}/read`, {});
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await api.patch('/api/notifications/read-all', {});
+}
+
+

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     brave_api_key: str = ""
     enable_external_vendor_search: bool = False
 
+    # WhatsApp via TextMeBot
+    textmebot_api_key: str = ""
+    textmebot_sender_phone: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
