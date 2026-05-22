@@ -41,6 +41,10 @@ class MaintenanceGraphState(TypedDict, total=False):
     is_compliant: bool
 
     # Phase 3 — Vendor & Governance
+    ranked_vendor_ids: list[str]
+    ranked_vendors: list[dict[str, Any]]
+    outreach_started: bool
+    outreach_thread_id: str | None
     assigned_vendor: str | None
     vendor_phone: str | None
     assigned_vendor_id: str | None

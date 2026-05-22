@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchProfile } from '../services/estateflow';
+import { clearVendorToken, hasVendorToken, setVendorToken } from '../lib/vendorAuth';
+import { fetchProfile, loginVendor } from '../services/estateflow';
 import { UserProfile, UserRole } from '../types';
 
 interface AuthContextValue {
@@ -10,7 +11,8 @@ interface AuthContextValue {
   profile: UserProfile | null;
   role: UserRole;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  isAuthenticated: boolean;
+  signIn: (email: string, password: string, role: UserRole) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -31,7 +33,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function loadVendorSession() {
+    if (!hasVendorToken()) {
+      setProfile(null);
+      return;
+    }
+    await loadProfile();
+  }
+
   useEffect(() => {
+    if (hasVendorToken()) {
+      loadVendorSession().finally(() => setLoading(false));
+      return;
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (data.session) {
@@ -42,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (hasVendorToken()) return;
       setSession(s);
       if (s) loadProfile();
       else setProfile(null);
@@ -50,19 +66,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string, role: UserRole) {
+    if (role === 'vendor') {
+      await supabase.auth.signOut();
+      clearVendorToken();
+      const { access_token, vendor } = await loginVendor(email, password);
+      setVendorToken(access_token);
+      setSession(null);
+      setProfile({
+        id: vendor.id,
+        email: vendor.email ?? email,
+        role: 'vendor',
+        full_name: vendor.name,
+      });
+      return;
+    }
+
+    clearVendorToken();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     await loadProfile();
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    clearVendorToken();
     setProfile(null);
+    await supabase.auth.signOut();
+    setSession(null);
   }
 
   const user = session?.user ?? null;
   const role: UserRole = profile?.role ?? 'tenant';
+  const isAuthenticated = Boolean(session) || hasVendorToken();
 
   return (
     <AuthContext.Provider
@@ -72,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        isAuthenticated,
         signIn,
         signOut,
         refreshProfile: loadProfile,

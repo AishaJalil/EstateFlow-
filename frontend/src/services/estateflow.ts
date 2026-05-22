@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import { hasVendorToken } from '../lib/vendorAuth';
 import {
   agentLogsFromResponse,
   mapInspection,
@@ -18,16 +19,49 @@ import {
   Property,
   UserProfile,
   Vendor,
+  Message,
+  MessageThread,
+  AppNotification,
 } from '../types';
 
 export async function fetchProfile(): Promise<UserProfile> {
-  const row = unwrapData<Record<string, unknown>>(await api.get('/api/profile/me'));
+  const path = hasVendorToken() ? '/api/vendors/me' : '/api/profile/me';
+  const row = unwrapData<Record<string, unknown>>(await api.get(path));
   return {
     id: String(row.id),
     email: String(row.email ?? ''),
     role: row.role as UserProfile['role'],
     full_name: row.full_name as string | undefined,
   };
+}
+
+export async function loginVendor(
+  email: string,
+  password: string
+): Promise<{ access_token: string; vendor: { id: string; name: string; email?: string } }> {
+  const res = unwrapData<{
+    access_token: string;
+    vendor: { id: string; name: string; email?: string };
+  }>(await api.post('/api/vendors/login', { email, password }, false));
+  return res;
+}
+
+export async function registerVendor(body: {
+  name: string;
+  email: string;
+  password: string;
+  specialty: string;
+  phone: string;
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  area?: string;
+}): Promise<{ access_token: string; vendor: { id: string; name: string; email?: string } }> {
+  const res = unwrapData<{
+    access_token: string;
+    vendor: { id: string; name: string; email?: string };
+  }>(await api.post('/api/vendors/register', body, false));
+  return res;
 }
 
 export async function fetchMaintenanceRequests(): Promise<MaintenanceRequest[]> {
@@ -141,4 +175,45 @@ export async function fetchPredictiveMaintenance(): Promise<PredictiveMaintenanc
 
 export async function runPredictiveMaintenance(): Promise<void> {
   await api.post('/api/predictive-maintenance/run');
+}
+
+export async function fetchMessageThreads(): Promise<MessageThread[]> {
+  const rows = unwrapData<MessageThread[]>(await api.get('/api/messaging/threads'));
+  return rows ?? [];
+}
+
+export async function fetchMessageThread(
+  threadId: string
+): Promise<{ messages: Message[]; thread: MessageThread }> {
+  const res = await api.get<{ data: Message[]; thread: MessageThread }>(
+    `/api/messaging/threads/${threadId}/messages`
+  );
+  return { messages: res.data ?? [], thread: res.thread };
+}
+
+export async function sendThreadMessage(threadId: string, body: string): Promise<void> {
+  await api.post(`/api/messaging/threads/${threadId}/messages`, { body });
+}
+
+export async function fetchNotifications(): Promise<AppNotification[]> {
+  const rows = unwrapData<AppNotification[]>(await api.get('/api/notifications'));
+  return rows ?? [];
+}
+
+export async function fetchCalendarStatus(): Promise<{ connected: boolean }> {
+  const res = unwrapData<{ connected: boolean; profile_id: string }>(
+    await api.get('/api/calendar/status')
+  );
+  return { connected: res.connected };
+}
+
+export async function startCalendarConnect(): Promise<{ auth_url: string }> {
+  const res = unwrapData<{ auth_url: string; state: string }>(
+    await api.get('/api/calendar/connect')
+  );
+  return { auth_url: res.auth_url };
+}
+
+export async function disconnectCalendar(): Promise<void> {
+  await api.delete('/api/calendar/disconnect');
 }

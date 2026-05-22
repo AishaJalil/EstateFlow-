@@ -1,8 +1,11 @@
 import { supabase } from './supabase';
+import { getVendorToken } from './vendorAuth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 async function getToken(): Promise<string | null> {
+  const vendorToken = getVendorToken();
+  if (vendorToken) return vendorToken;
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
 }
@@ -43,12 +46,13 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, {
-      method: 'POST',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    }),
+  get: <T>(path: string, withAuth = true) => request<T>(path, { method: 'GET' }, withAuth),
+  post: <T>(path: string, body?: unknown, withAuth = true) =>
+    request<T>(
+      path,
+      { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined },
+      withAuth
+    ),
   postForm: <T>(path: string, form: FormData) =>
     request<T>(path, { method: 'POST', body: form }),
   put: <T>(path: string, body?: unknown) =>

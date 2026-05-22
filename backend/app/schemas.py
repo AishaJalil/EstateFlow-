@@ -54,7 +54,25 @@ class VendorCreate(BaseModel):
     specialty: str
     phone: str | None = None
     email: str | None = None
+    password: str | None = Field(default=None, min_length=6)
     latitude: float | None = None
     longitude: float | None = None
     city: str | None = None
     area: str | None = None
+
+
+class VendorRegister(BaseModel):
+    name: str
+    email: str
+    password: str = Field(min_length=6)
+    specialty: str
+    phone: str
+    latitude: float | None = None
+    longitude: float | None = None
+    city: str | None = None
+    area: str | None = None
+
+
+class VendorLogin(BaseModel):
+    email: str
+    password: str

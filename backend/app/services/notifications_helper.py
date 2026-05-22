@@ -12,12 +12,14 @@ async def notify_in_app(
     reference_type: str,
     reference_id: str,
     recipient_email: str | None = None,
+    recipient_vendor_id: str | None = None,
 ) -> None:
     admin = get_supabase_admin()
     admin.table("notifications").insert(
         {
             "type": "in_app",
             "recipient_id": recipient_id,
+            "recipient_vendor_id": recipient_vendor_id,
             "recipient_email": recipient_email,
             "subject": subject,
             "message": message,

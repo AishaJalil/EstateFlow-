@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "estateflow-calendar": {
+      "command": "python",
+      "args": ["-m", "mcp_servers.estateflow_calendar"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "SUPABASE_URL": "${env:SUPABASE_URL}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${env:SUPABASE_SERVICE_ROLE_KEY}",
+        "GOOGLE_OAUTH_CLIENT_ID": "${env:GOOGLE_OAUTH_CLIENT_ID}",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${env:GOOGLE_OAUTH_CLIENT_SECRET}",
+        "CALENDAR_TOKEN_ENCRYPTION_KEY": "${env:CALENDAR_TOKEN_ENCRYPTION_KEY}"
+      }
+    }
+  }
+}

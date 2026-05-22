@@ -6,6 +6,7 @@ export const PIPELINE_ORDER = [
   'compliance_agent',
   'vendor_matching_agent',
   'governance_ethics_agent',
+  'vendor_outreach_agent',
   'scheduling_agent',
   'communications_agent',
   'report_agent',

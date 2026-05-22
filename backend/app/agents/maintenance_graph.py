@@ -17,6 +17,7 @@ from app.agents.nodes import (
     scheduling_agent,
     security_agent,
     vendor_matching_agent,
+    vendor_outreach_agent,
 )
 from app.agents.state import MaintenanceGraphState
 from app.agents.progress import init_pipeline_progress
@@ -39,6 +40,7 @@ def build_maintenance_graph():
     graph.add_node("compliance_agent", compliance_agent)
     graph.add_node("vendor_matching_agent", vendor_matching_agent)
     graph.add_node("governance_ethics_agent", governance_ethics_agent)
+    graph.add_node("vendor_outreach_agent", vendor_outreach_agent)
     graph.add_node("scheduling_agent", scheduling_agent)
     graph.add_node("communications_agent", communications_agent)
     graph.add_node("report_agent", report_agent)
@@ -61,10 +63,11 @@ def build_maintenance_graph():
         route_after_governance,
         {
             "blocked": END,
-            "await_human": "scheduling_agent",
-            "continue": "scheduling_agent",
+            "await_human": "vendor_outreach_agent",
+            "continue": "vendor_outreach_agent",
         },
     )
+    graph.add_edge("vendor_outreach_agent", "scheduling_agent")
     graph.add_edge("scheduling_agent", "communications_agent")
     graph.add_edge("communications_agent", "report_agent")
     graph.add_conditional_edges(

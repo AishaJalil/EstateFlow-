@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { NavLink, useNavigate, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Plus, CheckSquare, Building2, Users2,
-  ClipboardList, LogOut, Menu, X, ChevronDown, Building
+  ClipboardList, LogOut, Menu, X, ChevronDown, Building, MessageSquare, Calendar
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchPendingApprovals } from '../services/estateflow';
 import { UserRole } from '../types';
@@ -17,6 +18,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: <LayoutDashboard size={18} />, roles: ['tenant', 'manager', 'inspector', 'admin'] },
+  { label: 'Messages', to: '/messages', icon: <MessageSquare size={18} />, roles: ['tenant'] },
+  { label: 'Calendar', to: '/calendar', icon: <Calendar size={18} />, roles: ['tenant'] },
   { label: 'New Request', to: '/submit', icon: <Plus size={18} />, roles: ['tenant'] },
   { label: 'Approvals', to: '/approvals', icon: <CheckSquare size={18} />, roles: ['manager', 'admin'] },
   { label: 'Inspections', to: '/inspect', icon: <ClipboardList size={18} />, roles: ['manager', 'inspector', 'admin'] },
@@ -91,6 +94,7 @@ export function Layout() {
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           <NavLinks />
+          <NotificationBell />
         </nav>
 
         <div className="px-3 pb-5 border-t border-teal-600 pt-4">
@@ -143,6 +147,7 @@ export function Layout() {
           <div className="w-64 bg-teal-700 flex flex-col pt-14 pb-5">
             <nav className="flex-1 px-3 py-4 space-y-0.5">
               <NavLinks />
+              <NotificationBell />
             </nav>
             <div className="px-3 border-t border-teal-600 pt-3">
               <button

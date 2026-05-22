@@ -7,6 +7,7 @@ const styles: Record<RequestStatus, string> = {
   'Resolved': 'bg-green-100 text-green-800 border border-green-200',
   'Pending Approval': 'bg-amber-100 text-amber-800 border border-amber-200',
   'Blocked': 'bg-red-100 text-red-800 border border-red-200',
+  'Awaiting Vendor': 'bg-orange-100 text-orange-800 border border-orange-200',
 };
 
 export function StatusBadge({ status }: { status: RequestStatus }) {

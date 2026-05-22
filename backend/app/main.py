@@ -9,10 +9,17 @@ from app.api.routes import (
     health,
     inspections,
     maintenance,
+    messaging,
+    notifications,
     predictive,
     profile,
     properties,
     vendors,
+    calendar,
+)
+from app.services.vendor_outreach import (
+    process_outreach_timeouts,
+    process_pending_vendor_messages,
 )
 from app.config import get_settings
 
@@ -42,6 +49,9 @@ app.include_router(vendors.router, prefix="/api")
 app.include_router(maintenance.router, prefix="/api")
 app.include_router(inspections.router, prefix="/api")
 app.include_router(predictive.router, prefix="/api")
+app.include_router(messaging.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
+app.include_router(calendar.router, prefix="/api")
 
 
 async def _predictive_weekly_loop() -> None:
@@ -57,9 +67,26 @@ async def _predictive_weekly_loop() -> None:
         await asyncio.sleep(interval_sec)
 
 
+async def _vendor_outreach_loop() -> None:
+    """Poll vendor replies and 24h outreach timeouts."""
+    settings = get_settings()
+    interval = max(60, settings.vendor_outreach_poll_seconds)
+    await asyncio.sleep(30)
+    while True:
+        try:
+            n_msgs = await process_pending_vendor_messages()
+            n_time = await process_outreach_timeouts()
+            if n_msgs or n_time:
+                logger.info("Outreach worker: %s replies, %s timeouts", n_msgs, n_time)
+        except Exception:
+            logger.exception("Vendor outreach worker failed")
+        await asyncio.sleep(interval)
+
+
 @app.on_event("startup")
 async def startup_predictive_scheduler() -> None:
     asyncio.create_task(_predictive_weekly_loop())
+    asyncio.create_task(_vendor_outreach_loop())
 
 
 @app.get("/")

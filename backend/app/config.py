@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     brave_api_key: str = ""
     enable_external_vendor_search: bool = False
 
+    vendor_outreach_top_n: int = 6
+    vendor_outreach_poll_seconds: int = 300
+
+    # Google Calendar — per-user OAuth in calendar_connections; agent uses MCP tools
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = "http://localhost:8000/api/calendar/callback"
+    calendar_token_encryption_key: str = ""
+    mcp_calendar_use_stdio: bool = False
+
+    vendor_jwt_secret: str = ""
+    vendor_jwt_expire_hours: int = 168
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -13,6 +13,10 @@ from app.services.issue_parser import parse_issue_fast, parse_urgency_fast
 
 logger = logging.getLogger(__name__)
 
+# Retry config for 429 rate-limit responses
+_RATE_LIMIT_RETRIES = 3
+_RATE_LIMIT_BASE_DELAY = 2.0  # seconds; doubles each retry (2 → 4 → 8)
+
 
 def _build_client() -> ChatOpenAI:
     settings = get_settings()
@@ -92,8 +96,11 @@ async def structured_completion(
     fallback_urgency_boost: str | None = None,
 ) -> dict[str, Any]:
     """
-    Call OpenRouter with a hard timeout. On failure, use fast rule-based parsing
-    so the pipeline never hangs for minutes on free-tier queue delays.
+    Call OpenRouter with a hard timeout and exponential-backoff retry on 429.
+
+    Retry schedule: up to 3 attempts, waiting 2s → 4s → 8s between them.
+    Only falls back to rule-based parsing when all retries are exhausted or
+    a non-rate-limit error occurs.
     """
     settings = get_settings()
     timeout = settings.llm_timeout_seconds
@@ -110,29 +117,65 @@ async def structured_completion(
         tokens = _tokens_from_response(response, system, user, text)
         return _extract_json(text), tokens
 
-    try:
-        parsed, tokens = await asyncio.wait_for(_call_llm(), timeout=timeout)
-        parsed["__llm_tokens"] = tokens
-        return parsed
-    except asyncio.TimeoutError:
-        logger.warning("LLM timed out after %ss — using rule-based fallback", timeout)
-    except Exception as exc:
-        err = str(exc).lower()
-        if "429" in err or "rate" in err:
-            logger.warning("LLM rate-limited — using rule-based fallback immediately")
-        else:
-            logger.warning("LLM failed (%s) — using rule-based fallback", exc)
-        if settings.use_ollama_fallback:
+    last_exc: Exception | None = None
+
+    for attempt in range(1, _RATE_LIMIT_RETRIES + 1):
+        try:
+            parsed, tokens = await asyncio.wait_for(_call_llm(), timeout=timeout)
+            parsed["__llm_tokens"] = tokens
+            return parsed
+
+        except asyncio.TimeoutError:
+            logger.warning("LLM timed out after %ss (attempt %d/%d)", timeout, attempt, _RATE_LIMIT_RETRIES)
+            # Timeouts are not retried — fall through to fallback immediately
+            last_exc = None
+            break
+
+        except Exception as exc:
+            last_exc = exc
+            err = str(exc).lower()
+            is_rate_limit = "429" in err or "rate limit" in err or "too many requests" in err
+
+            if is_rate_limit:
+                if attempt < _RATE_LIMIT_RETRIES:
+                    delay = _RATE_LIMIT_BASE_DELAY * (2 ** (attempt - 1))
+                    logger.warning(
+                        "LLM rate-limited (attempt %d/%d) — retrying in %.1fs",
+                        attempt, _RATE_LIMIT_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    logger.warning(
+                        "LLM rate-limited on all %d attempts — falling back", _RATE_LIMIT_RETRIES
+                    )
+            else:
+                logger.warning("LLM failed (%s) — trying fallbacks", exc)
+
+            # Non-rate-limit error: try Ollama immediately, then break
+            if settings.use_ollama_fallback:
+                try:
+                    raw = await asyncio.wait_for(_ollama_chat(system, user), timeout=timeout)
+                    parsed = _extract_json(raw)
+                    parsed["__llm_tokens"] = _estimate_tokens(system, user, raw)
+                    return parsed
+                except Exception as ollama_exc:
+                    logger.warning("Ollama fallback failed: %s", ollama_exc)
+
+            if not is_rate_limit:
+                break  # Don't retry non-429 errors
+
+    # All retries exhausted — try Ollama once more for rate-limit case
+    if last_exc is not None and settings.use_ollama_fallback:
+        err = str(last_exc).lower()
+        if "429" in err or "rate limit" in err or "too many requests" in err:
             try:
-                raw = await asyncio.wait_for(
-                    _ollama_chat(system, user),
-                    timeout=timeout,
-                )
+                raw = await asyncio.wait_for(_ollama_chat(system, user), timeout=timeout)
                 parsed = _extract_json(raw)
                 parsed["__llm_tokens"] = _estimate_tokens(system, user, raw)
                 return parsed
             except Exception as ollama_exc:
-                logger.warning("Ollama fallback failed: %s", ollama_exc)
+                logger.warning("Ollama fallback failed after rate-limit retries: %s", ollama_exc)
 
     if fallback_issue is not None:
         if fallback_risk_hits is not None:

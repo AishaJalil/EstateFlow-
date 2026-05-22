@@ -3,8 +3,10 @@ import { AuthProvider } from './contexts/AuthContext';
 import { isConfigured } from './lib/supabase';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
+import { VendorLayout } from './components/VendorLayout';
 import ConfigError from './pages/ConfigError';
 import Login from './pages/Login';
+import VendorRegister from './pages/VendorRegister';
 import Dashboard from './pages/Dashboard';
 import SubmitRequest from './pages/SubmitRequest';
 import RequestDetail from './pages/RequestDetail';
@@ -12,6 +14,8 @@ import Approvals from './pages/Approvals';
 import Properties from './pages/Properties';
 import Vendors from './pages/Vendors';
 import Inspections from './pages/Inspections';
+import Messages from './pages/Messages';
+import CalendarSettings from './pages/CalendarSettings';
 
 export default function App() {
   if (!isConfigured) return <ConfigError />;
@@ -21,8 +25,19 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/vendor/register" element={<VendorRegister />} />
+          <Route path="/vendor/login" element={<Navigate to="/login?role=vendor" replace />} />
 
-          {/* All protected routes share the authenticated layout */}
+          {/* Vendor portal — Messages + Notifications + Calendar only */}
+          <Route element={<ProtectedRoute allowedRoles={['vendor']} />}>
+            <Route element={<VendorLayout />}>
+              <Route path="/vendor" element={<Navigate to="/vendor/messages" replace />} />
+              <Route path="/vendor/messages" element={<Messages />} />
+              <Route path="/vendor/calendar" element={<CalendarSettings />} />
+            </Route>
+          </Route>
+
+          {/* Tenant / manager / inspector / admin */}
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route index element={<Dashboard />} />
@@ -32,6 +47,16 @@ export default function App() {
                 </ProtectedRoute>
               } />
               <Route path="requests/:id" element={<RequestDetail />} />
+              <Route path="messages" element={
+                <ProtectedRoute allowedRoles={['tenant']}>
+                  <Messages />
+                </ProtectedRoute>
+              } />
+              <Route path="calendar" element={
+                <ProtectedRoute allowedRoles={['tenant']}>
+                  <CalendarSettings />
+                </ProtectedRoute>
+              } />
               <Route path="approvals" element={
                 <ProtectedRoute allowedRoles={['manager', 'admin']}>
                   <Approvals />

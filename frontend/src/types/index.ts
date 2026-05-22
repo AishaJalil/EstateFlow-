@@ -1,4 +1,4 @@
-export type UserRole = 'tenant' | 'manager' | 'inspector' | 'admin';
+export type UserRole = 'tenant' | 'manager' | 'inspector' | 'admin' | 'vendor';
 
 export interface UserProfile {
   id: string;
@@ -13,7 +13,8 @@ export type RequestStatus =
   | 'Scheduled'
   | 'Resolved'
   | 'Pending Approval'
-  | 'Blocked';
+  | 'Blocked'
+  | 'Awaiting Vendor';
 
 export type UrgencyLevel = 'Critical' | 'High' | 'Medium' | 'Low';
 
@@ -103,6 +104,39 @@ export interface PredictiveMaintenance {
 }
 
 export type AgentStepStatus = 'pending' | 'running' | 'done' | 'failed';
+
+export interface MessageThread {
+  id: string;
+  maintenance_request_id: string;
+  tenant_id: string;
+  vendor_id?: string;
+  status: string;
+  updated_at?: string;
+  maintenance_request?: {
+    ticket_id?: string;
+    property_name?: string;
+    unit?: string;
+    status?: string;
+  };
+}
+
+export interface Message {
+  id: string;
+  thread_id: string;
+  sender_type: 'agent' | 'tenant' | 'vendor';
+  body: string;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  subject?: string;
+  message: string;
+  status: string;
+  created_at: string;
+  reference_type?: string;
+  reference_id?: string;
+}
 
 export interface AgentStep {
   key: string;

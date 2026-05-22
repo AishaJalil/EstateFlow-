@@ -129,7 +129,48 @@ App: http://localhost:5173
 
 1. Sign up as **tenant** → submit a request (Roman Urdu text + optional photo + geolocation).
 2. Sign up as **manager** → open **Approvals** for Critical items.
-3. Add vendors with lat/lng via **Vendors** (manager) for nearest-match to work.
+3. **Vendors** use `/vendor/register` (separate portal) — specialty, phone, browser geolocation + city/area.
+4. Tenants and vendors connect **Google Calendar** under **Calendar** (tenant) or **Calendar** (vendor portal).
+
+### Migrations (messaging + MCP calendar)
+
+Run in order after earlier migrations: `011_messaging_vendor_outreach.sql`, `012_auth_vendor_role.sql`, `013_calendar_oauth.sql`.
+
+Enable Supabase **Realtime** for table `messages` (Database → Replication) so the chat UI updates live.
+
+### Google Calendar MCP (highlight)
+
+EstateFlow ships an MCP server at `backend/mcp_servers/estateflow_calendar/`:
+
+| Tool | Purpose |
+|------|---------|
+| `calendar_connection_status` | Check if a profile connected OAuth |
+| `calendar_create_event` | Book on one user's calendar |
+| `calendar_book_maintenance_pair` | Book tenant + vendor calendars for a visit |
+| `calendar_vendor_profile_id` | Map `vendors.id` → vendor user's `profile_id` |
+
+**Per-user OAuth** is stored in `calendar_connections` (encrypted). The agent loads tokens only for the tenant and vendor involved in each booking — this scales to many users without one shared calendar.
+
+**Backend `.env` additions:**
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/api/calendar/callback
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CALENDAR_TOKEN_ENCRYPTION_KEY=...
+MCP_CALENDAR_USE_STDIO=false
+```
+
+**Cursor IDE:** `.cursor/mcp.json` points at the same server for local agent tooling.
+
+When a vendor confirms a visit, `book_maintenance_appointment` calls MCP tool `calendar_book_maintenance_pair`.
+
+### `profiles.vendor_id` (not “one vendor per tenant”)
+
+- **Tenants** have `vendor_id = NULL`.
+- **Vendor logins** have `vendor_id` = their row in `vendors` (this account *is* that business).
+- Many tenants ↔ many vendors per job: `message_threads`, `vendor_outreach`, `maintenance_requests` — not `profiles.vendor_id`.
 
 ## Maintenance agent pipeline
 

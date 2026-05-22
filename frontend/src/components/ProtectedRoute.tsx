@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { session, loading, role } = useAuth();
+  const { isAuthenticated, loading, role } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -22,12 +22,16 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={role === 'vendor' ? '/vendor/messages' : '/'} replace />;
+  }
+
+  if (!allowedRoles && role === 'vendor') {
+    return <Navigate to="/vendor/messages" replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;

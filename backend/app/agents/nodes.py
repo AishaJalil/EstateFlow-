@@ -22,7 +22,8 @@ from app.services.report_generator import (
     upload_report_pdf,
 )
 from app.services.risk_matrix import SLA_BY_URGENCY, lookup_risk_hits
-from app.services.vendor_matching import rank_vendors
+from app.services.vendor_matching import rank_vendors_top
+from app.services.vendor_outreach import start_vendor_outreach
 
 PII_PATTERNS = [
     (r"\b\d{5}-\d{7}-\d\b", "cnic"),
@@ -165,9 +166,9 @@ async def complaint_agent(state: MaintenanceGraphState) -> MaintenanceGraphState
 
     system = """You are EstateFlow Complaint Agent. Input may be English, Urdu, or Roman Urdu.
 Return ONLY JSON:
-trade (plumbing|hvac|electrical|structural|general|appliances|pest control),
+trade (plumbing|hvac|electrical|structural|general|appliances|pest control|carpentry),
 location_detail (room/area in unit),
-category (Plumbing|HVAC|Electrical|Structural|General|Appliances|Pest Control),
+category (Plumbing|HVAC|Electrical|Structural|General|Appliances|Pest Control|Carpentry),
 summary (one English sentence),
 vendor_specialty (same as trade),
 estimated_time (e.g. 2-4 hours),
@@ -336,15 +337,18 @@ async def vendor_matching_agent(state: MaintenanceGraphState) -> MaintenanceGrap
     if state.get("pipeline_blocked"):
         return await _track(state, "vendor_matching_agent", {"skipped": True}, 0)
 
-    vendors_resp = admin.table("vendors").select("*").eq("available", True).execute()
+    vendors_resp = admin.table("vendors").select("*").execute()
     specialty = (state.get("vendor_specialty") or "general").lower()
-    selected = rank_vendors(
+    top_n = settings.vendor_outreach_top_n
+    ranked = rank_vendors_top(
         vendors_resp.data or [],
         specialty,
         state.get("latitude"),
         state.get("longitude"),
         settings.vendor_search_radius_km,
+        top_n=top_n,
     )
+    selected = ranked[0] if ranked else None
 
     external_used = False
     license_valid = True
@@ -378,6 +382,7 @@ async def vendor_matching_agent(state: MaintenanceGraphState) -> MaintenanceGrap
     distance = selected.get("distance_km") if selected else None
 
     ms = int((time.perf_counter() - start) * 1000)
+    ranked_ids = [v["id"] for v in ranked if v.get("id")]
     output = {
         "assigned_vendor": assigned_name,
         "vendor_phone": assigned_phone,
@@ -385,6 +390,8 @@ async def vendor_matching_agent(state: MaintenanceGraphState) -> MaintenanceGrap
         "vendor_distance_km": distance,
         "vendor_license_valid": license_valid if assigned_id else False,
         "external_search_used": external_used,
+        "ranked_vendor_ids": ranked_ids,
+        "ranked_vendors": ranked,
     }
     return await _track({**state, **output}, "vendor_matching_agent", output, ms)
 
@@ -457,6 +464,30 @@ async def governance_ethics_agent(state: MaintenanceGraphState) -> MaintenanceGr
 # ─── Phase 4: Execution & Communication ─────────────────────────────────────
 
 
+async def vendor_outreach_agent(state: MaintenanceGraphState) -> MaintenanceGraphState:
+    """Contact first ranked vendor via tenant messaging; queue 5–6 vendors for 24h fallback."""
+    start = time.perf_counter()
+
+    if state.get("pipeline_blocked") or state.get("requires_human_approval"):
+        ms = int((time.perf_counter() - start) * 1000)
+        return await _track(
+            state,
+            "vendor_outreach_agent",
+            {"skipped": True},
+            ms,
+        )
+
+    ranked = state.get("ranked_vendors") or []
+    result = await start_vendor_outreach(state, ranked)
+    ms = int((time.perf_counter() - start) * 1000)
+    output = {
+        "outreach_started": result.get("outreach_started", False),
+        "outreach_thread_id": result.get("thread_id"),
+        "db_status": "Awaiting Vendor" if result.get("outreach_started") else state.get("db_status"),
+    }
+    return await _track({**state, **output}, "vendor_outreach_agent", output, ms)
+
+
 async def scheduling_agent(state: MaintenanceGraphState) -> MaintenanceGraphState:
     """Node F: Book internal calendar slot."""
     start = time.perf_counter()
@@ -475,25 +506,27 @@ async def scheduling_agent(state: MaintenanceGraphState) -> MaintenanceGraphStat
             int((time.perf_counter() - start) * 1000),
         )
 
+    if state.get("outreach_started"):
+        output = {
+            "scheduling_status": "Awaiting Vendor Confirmation",
+            "scheduled_time": None,
+        }
+        return await _track(
+            {
+                **state,
+                "scheduling_status": "Awaiting Vendor Confirmation",
+                "scheduled_time": None,
+                "db_status": "Awaiting Vendor",
+            },
+            "scheduling_agent",
+            output,
+            int((time.perf_counter() - start) * 1000),
+        )
+
     urgency = state.get("urgency", "Medium")
     hours = 2 if urgency == "Critical" else 4 if urgency == "High" else 24
     slot = datetime.utcnow() + timedelta(hours=hours)
     scheduled = slot.strftime("%Y-%m-%d %H:%M UTC")
-
-    if state.get("assigned_vendor_id"):
-        admin = get_supabase_admin()
-        v = (
-            admin.table("vendors")
-            .select("total_assignments")
-            .eq("id", state["assigned_vendor_id"])
-            .limit(1)
-            .execute()
-        )
-        if v.data:
-            n = (v.data[0].get("total_assignments") or 0) + 1
-            admin.table("vendors").update({"total_assignments": n}).eq(
-                "id", state["assigned_vendor_id"]
-            ).execute()
 
     ms = int((time.perf_counter() - start) * 1000)
     output = {"scheduling_status": "Confirmed", "scheduled_time": scheduled}
@@ -523,6 +556,12 @@ async def communications_agent(state: MaintenanceGraphState) -> MaintenanceGraph
         msg = (
             f"Your request ({summary}) is classified as {urgency}. "
             "A property manager must approve dispatch. You will be updated shortly."
+        )
+    elif state.get("outreach_started"):
+        msg = (
+            f"Hi — we've classified your issue as {urgency}: {summary}. "
+            f"We've contacted {vendor} and are awaiting their availability (24h window). "
+            "Check Messages for updates."
         )
     elif state.get("scheduling_status") == "Confirmed":
         msg = (
